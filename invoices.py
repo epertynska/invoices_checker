@@ -12,14 +12,20 @@ vat = 0.23
 brutto = 1.23
 currency_file = "tabele_kursowe.txt"
 date_format = "%Y-%m-%d"
-tok_test = True
+ok_test = True
 msg = ""
+end = False
 
 # current NBP table number
 today_nbp = json.loads(requests.get("http://api.nbp.pl/api/exchangerates/rates/a/eur/").text)['rates'][0]['no'].split("/")[0]
 
 current_date = str(datetime.now()).split()[0]
 
+# changing the boolean variable to exit the program
+def exit():
+    global end
+    end = True
+    return end
 
 # writing all the NBP EUR currencies in the "tabele_kursowe.txt" file in given dates
 def fill_gap(start, end):
@@ -47,7 +53,11 @@ def pekao(date):
 
     page = requests.get(url)
     if page.status_code != 200:
-        pekao = float(input("Niestety, strona banku Pekao SA nie odpowiada. Proszę podać wartość kursu (dzielone przecinkiem):\n").replace(",", "."))
+        pekao = input("Niestety, strona banku Pekao SA nie odpowiada. Proszę podać wartość kursu (dzielone przecinkiem):\n").replace(",", ".")
+        if pekao.replace(".", "").isdigits():
+            pekao = float(pekao)
+        elif pekao == "q":
+            exit()
     else:
         soup = BeautifulSoup(page.text, 'lxml')
         table = soup.find("table", {"class": "currencies-table"})
@@ -66,27 +76,28 @@ def pekao(date):
 # what is the date for PLN exchange rate
 def pln():
     global current_date
-    pay_date = input("Czy zastosować kurs Pekao wyemitowany dzisiaj? (T/N)")
+    pay_date = input("Czy zastosować kurs Pekao wyemitowany dzisiaj? (T/N)\n")
     if pay_date in ("Tt"):
         pekao(current_date)
-    else:
+    elif pay_date in ("Nn"):
         date_input("PLN")
+    elif pay_date == "q":
+        exit()
 
 # taking net value of invoice in EUR currency
 def netto():
     global netto_eur
     while True:
-        netto_eur = input("Podaj wartość netto w EUR:\n")
+        netto_eur = input('Podaj wartość netto w EUR lub naciśnij "q" aby wyjść:\n')
         if netto_eur == "q":
+            exit()
             break
-        try:
-            if "," in netto_eur:
+        else:
+            try:
                 netto_eur = float(netto_eur.replace(",", "."))
-            else:
-                netto_eur = float(netto_eur)
-            main_currency()
-        except Exception:
-            print("Proszę podać poprawną wartość.")
+                main_currency()
+            except ValueError:
+                print("Proszę podać poprawną wartość.")
 
 # checking if date is given in the right format and length
 def test_format(payment):
@@ -183,6 +194,9 @@ def date_input(currency):
             else:
                 pekao(payment)
                 break
+        elif payment == "q":
+            exit()
+            break
         else:
             print(msg_1, msg)
 
@@ -195,7 +209,8 @@ def main_currency():
                 pln()
                 break
             elif waluta in ("E", "e", "EUR"):
-                euro_date()     
+                euro_date() 
+                break    
         else:
             print("Wybierz poprawną wartość.")
 
@@ -205,7 +220,7 @@ def euro_date():
         when = input("Czy data wpłaty jest dzisiejsza? (T/N)\n")
         if when in ("TtNn"):
             if when in "Tt":
-                euro(current_date)
+                euro_today()
                 break
             else:
                 date_input("EUR")
