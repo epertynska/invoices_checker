@@ -7,7 +7,6 @@ from bs4 import BeautifulSoup
 bank_holidays_2022 = {"2022-01-06": "Święto Trzech Króli", "2022-04-18": "drugi dzień Wielkiej Nocy", "2022-05-03": "Święto Narodowe Konstytucji 3 Maja", "2022-06-16": "Boże Ciało", "2022-08-15": "Wniebowzięcie Najświętszej Maryi Panny, Święto Wojska Polskiego", "2022-11-01": "Wszystkich Świętych", "2022-11-11": "Narodowe Święto Niepodległości", "2022-12-26": "drugi dzień Bożego Narodzenia"}
 
 # basic variables
-netto_eur = 0
 vat = 0.23
 brutto = 1.23
 currency_file = "tabele_kursowe.txt"
@@ -15,6 +14,8 @@ date_format = "%Y-%m-%d"
 ok_test = True
 msg = ""
 end = False
+waluta = ""
+netto_eur = 0
 
 # current NBP table number
 today_nbp = json.loads(requests.get("http://api.nbp.pl/api/exchangerates/rates/a/eur/").text)['rates'][0]['no'].split("/")[0]
@@ -75,7 +76,6 @@ def pekao(date):
 
 # what is the date for PLN exchange rate
 def pln():
-    global current_date
     pay_date = input("Czy zastosować kurs Pekao wyemitowany dzisiaj? (T/N)\n")
     if pay_date in ("Tt"):
         pekao(current_date)
@@ -95,7 +95,7 @@ def netto():
         else:
             try:
                 netto_eur = float(netto_eur.replace(",", "."))
-                main_currency()
+                return netto_eur
             except ValueError:
                 print("Proszę podać poprawną wartość.")
 
@@ -202,15 +202,13 @@ def date_input(currency):
 
 # pink the currency of invoice
 def main_currency():
+    global waluta
     while True:
         waluta = input("Podaj walutę, w której ma zostać wystawiona faktura (PLN/EUR)\n")
         if waluta in ("P","p", "E", "e", "PLN", "EUR"):
-            if waluta in ("P", "p", "PLN"):
-                pln()
-                break
-            elif waluta in ("E", "e", "EUR"):
-                euro_date() 
-                break    
+            return waluta
+        elif waluta == "q":
+            exit()    
         else:
             print("Wybierz poprawną wartość.")
 
@@ -273,4 +271,11 @@ def printer_pln(kurs, date):
         """)
 
 file_check()
-netto()
+
+while not end:
+    netto()
+    main_currency()
+    if waluta in ("P", "p", "PLN"):
+        pln()
+    elif waluta in ("E", "e", "EUR"):
+        euro_date() 
