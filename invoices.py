@@ -1,7 +1,8 @@
 import json
 import requests
-from datetime import datetime
+import datetime
 from bs4 import BeautifulSoup
+
 
 # dictionary of bank holidays in 2022
 bank_holidays_2022 = {"2022-01-06": "Święto Trzech Króli", "2022-04-18": "drugi dzień Wielkiej Nocy", "2022-05-03": "Święto Narodowe Konstytucji 3 Maja", "2022-06-16": "Boże Ciało", "2022-08-15": "Wniebowzięcie Najświętszej Maryi Panny, Święto Wojska Polskiego", "2022-11-01": "Wszystkich Świętych", "2022-11-11": "Narodowe Święto Niepodległości", "2022-12-26": "drugi dzień Bożego Narodzenia"}
@@ -10,41 +11,24 @@ bank_holidays_2022 = {"2022-01-06": "Święto Trzech Króli", "2022-04-18": "dru
 vat = 0.23
 brutto = 1.23
 currency_file = "tabele_kursowe.txt"
+pekao_file = "kursy_pekao.txt"
 date_format = "%Y-%m-%d"
 ok_test = True
 msg = ""
 end = False
 waluta = ""
 netto_eur = 0
-pekao_kurs = 4.8294
+pekao_kurs = 0
 
 # current NBP table number
 today_nbp = json.loads(requests.get("http://api.nbp.pl/api/exchangerates/rates/a/eur/").text)['rates'][0]['no'].split("/")[0]
 
-current_date = str(datetime.now()).split()[0]
+current_date = str(datetime.datetime.now()).split()[0]
 
 # current pekao exchange rate
-u = f"https://www.pekao.com.pl/kursy-walut/lista-walut.html?nbpDate={current_date}&pekaoDate={current_date}&debitCardDate={current_date}&reutersDate=undefined&mortgageDate={current_date}&pekaoTable=1&customerSegment=CORPO#-kursy-walut-banku-pekao-sa"
-r = requests.get(u)
-if r.status_code != 200:
-    while True:
-        pekao_kurs = input("Niestety, strona banku Pekao SA nie odpowiada. Proszę podać wartość kursu (dzielone przecinkiem):\n").replace(",", ".")
-        if pekao_kurs.replace(".", "").isdigits():
-            pekao_kurs = float(pekao_kurs)
-            break
-        else:
-            print("Podaj poprawny kurs opublikowany {} o godzinie 7:00.".format(current_date))
-else:
-    soup = BeautifulSoup(r.text, 'lxml')
-    table = soup.find("table", {"class": "currencies-table"})
-    currencies_list = []
-    for i in table.find_all("tr", {"class": "currencies-table-item accordion-item"}):
-        currencies_list.append(i)
-    euro_line = currencies_list[1]
-    kursy_eur = []
-    for d in euro_line.find_all("td", {"class": "table-big-font"}):
-        kursy_eur.append(d)
-    pekao = float(str(kursy_eur[1].text).replace(",", "."))
+with open(pekao_file, "r") as f:
+    all = f.readlines()
+    pekao_kurs = float(all[-1].split()[1].rstrip("\n"))
 
 print('W dowolnym momencie naciśnij "q" aby wyjść z programu.')
 
@@ -64,46 +48,71 @@ def fill_gap(start, end):
         while i < upper:
             f.write(f"{kursy[i]['no']} {kursy[i]['effectiveDate']} {kursy[i]['mid']}\n")
             i += 1
-          
+
+# fill the pekao file with missing exchange rates
+def fill_pln_gap(start):
+    current = datetime.datetime.strptime(current_date, date_format)
+
+    start_date = datetime.datetime.strptime(start, date_format)
+    end_date = current
+    delta = datetime.timedelta(days=1)
+    start_date += delta
+    
+    while start_date <= end_date:
+        day = str(start_date).split()[0]
+        start_date += delta
+        with open("kursy_pekao.txt", "a") as p:
+            url = f"https://www.pekao.com.pl/kursy-walut/lista-walut.html?nbpDate={day}&pekaoDate={day}&debitCardDate={day}&reutersDate=undefined&mortgageDate={day}&pekaoTable=1&customerSegment=CORPO#-kursy-walut-banku-pekao-sa"
+            page = requests.get(url)
+            if page.status_code != 200:
+                continue
+            else:
+                soup = BeautifulSoup(page.text, 'lxml')
+                tbl = soup.find("table", {"class": "currencies-table"})
+        
+                currencies = []
+                try:
+                    info = str(soup.find("h2", {"class": "cl-flag table-big-font text-center"}).text).strip()
+                    if info == "Brak kursu z danego dnia, proszę wybrać inną datę.":
+                        continue
+                except AttributeError:
+                    for i in tbl.find_all("tr", {"class": "currencies-table-item accordion-item"}):
+                        currencies.append(i)
+                    euro_row = currencies[1]
+                    kursy = []
+                    for d in euro_row.find_all("td", {"class": "table-big-font"}):
+                        kursy.append(d)
+                    pekao = float(str(kursy[1].text).replace(",", "."))
+                    p.write(day + " " + str(pekao) + "\n")
+              
 # checking if the "tabele_kursowe.txt" file is up to date
-def file_check():
+def file_check_nbp():
+    delta = datetime.timedelta(days=1)
     with open(currency_file, "r") as t:
         last = t.readlines()[-1].split()
         last_table = last[0].split("/")[0]
         date_last = last[1]
+        start_date = datetime.datetime.strptime(date_last, date_format) + delta
         if today_nbp != last_table:
-            fill_gap(date_last, current_date)
+            fill_gap(start_date, current_date)
 
+# checking if the "kursy_pekao.txt" file is up to date
+def file_check_pekao():
+    with open(pekao_file, "r") as t:
+        all = t.readlines()
+        if all[-1].split()[0] != current_date:
+            fill_pln_gap(all[-1].split()[0])
+  
 # getting the right exchange rate from Pekao SA website
 def pekao(date):
-    url = f"https://www.pekao.com.pl/kursy-walut/lista-walut.html?nbpDate={date}&pekaoDate={date}&debitCardDate={date}&reutersDate=undefined&mortgageDate={date}&pekaoTable=1&customerSegment=CORPO#-kursy-walut-banku-pekao-sa"
+    with open(pekao_file, "r") as t:
+        all = [k.split() for k in t.readlines()]
+        for _ in all:
+            if date == _[0]:
+                num = all.index(_)
+                kurs_pekao = float(all[num][1])
+        printer_pln(kurs_pekao, date)
 
-    page = requests.get(url)
-    if page.status_code != 200:
-        while True:
-            pekao = input("Niestety, strona banku Pekao SA nie odpowiada. Proszę podać wartość kursu (dzielone przecinkiem):\n").replace(",", ".")
-            if pekao.replace(".", "").isdigits():
-                pekao = float(pekao)
-                break
-            elif pekao == "q":
-                exit()
-                break
-            else:
-                print("Podaj poprawny kurs opublikowany {} o godzinie 7:00.".format(date))
-    else:
-        soup = BeautifulSoup(page.text, 'lxml')
-        table = soup.find("table", {"class": "currencies-table"})
-
-        currencies = []
-
-        for i in table.find_all("tr", {"class": "currencies-table-item accordion-item"}):
-            currencies.append(i)
-        euro_row = currencies[1]
-        kursy = []
-        for d in euro_row.find_all("td", {"class": "table-big-font"}):
-            kursy.append(d)
-        pekao = float(str(kursy[1].text).replace(",", "."))
-    printer_pln(pekao, date)
 
 # what is the date for PLN exchange rate
 def pln():
@@ -121,7 +130,7 @@ def netto(finish):
     while True:
         if end is True:
             break
-        netto_eur = input('Podaj wartość netto w EUR:\n')
+        netto_eur = input('Podaj wartość netto w EUR:\n').replace(" ", "")
         if netto_eur == "q":
             break
         try:
@@ -136,6 +145,8 @@ def netto(finish):
         except ValueError:
             print("Proszę podać poprawną wartość.")
         except Exception:
+            print("Teraz już nie jest ok")
+            print(netto)
             print("Wartość musi być większa od zera.")
 
 # checking if date is given in the right format and length
@@ -152,15 +163,9 @@ def test_format(payment):
 def test_digits(payment):
     global msg, ok_test
     signs = ("1234567890-")
-    nums_bools = [num.isdigit() for num in payment.replace("-", "")]
-    test_nums = all(nums_bools)
-    if test_nums:
-        right_symbols = [s in signs for s in payment]
-        test_right = all(right_symbols)
-    else:
-        right_symbols = False
-        test_right = False
-    if not test_right or not test_nums:
+    nums_bools = [num for num in payment if num in signs]
+    test_nums = len(nums_bools) == 10
+    if not test_nums:
         msg += "Data powinna się składać z cyfr i myślników.\n"
         ok_test = False
     return msg
@@ -194,8 +199,8 @@ def test_real(payment):
 # weekend days check
 def test_weekend(payment):
     global msg
-    given_date = datetime.strptime(payment, date_format)
-    test_weekend = datetime.weekday(given_date) <= 4
+    given_date = datetime.datetime.strptime(payment, date_format)
+    test_weekend = datetime.datetime.weekday(given_date) <= 4
     if not test_weekend:
         msg += "Podany dzień przypada na weekend.\n" 
     return msg
@@ -203,8 +208,8 @@ def test_weekend(payment):
 # check if date isn't in the future
 def test_future(payment): 
     global msg
-    given_date = datetime.strptime(payment, date_format)   
-    current = datetime.strptime(current_date, date_format)
+    given_date = datetime.datetime.strptime(payment, date_format)   
+    current = datetime.datetime.strptime(current_date, date_format)
     test_f = given_date <= current
     if not test_f:
         msg += "Podany dzień jeszcze nie nastąpił.\n"
@@ -224,7 +229,6 @@ def date_input(currency):
     while True:
         payment = input("Podaj datę wpływu na konto: (RRRR-MM-DD)\n")
         msg_1 = "Data jest niepoprawna.\n"
-        
         test_format(payment)
         test_digits(payment)
         test_length(payment)
@@ -286,11 +290,13 @@ def euro_date():
 def euro_today():
     with open(currency_file, "r") as t:
         all_courses = [k.split() for k in t.readlines()]
-        tabela = all_courses[-1][0]
-        kurs_nbp = float(all_courses[-1][2])
-        print("Numer tabeli kursowej:", tabela)
-        print("Kurs:", kurs_nbp)
-        printer_eur(kurs_nbp)
+        if all_courses[-1][1] == current_date:
+            tabela = all_courses[-2][0]
+            kurs_nbp = float(all_courses[-2][2])
+        else:
+            tabela = all_courses[-2][0]
+            kurs_nbp = float(all_courses[-2][2])
+        printer_eur(tabela, kurs_nbp)
 
 # picking the right NBP table and exchange rate for payment - from the day before
 def euro(date):
@@ -301,12 +307,12 @@ def euro(date):
                 num = all_courses.index(_)
                 tabela = all_courses[num - 1][0]
                 kurs_nbp = float(all_courses[num - 1][2])
-        print("Numer tabeli kursowej:", tabela)
-        print("Kurs:", kurs_nbp)
-        printer_eur(kurs_nbp)
+        printer_eur(tabela, kurs_nbp)
 
 # print the calculations in EUR
-def printer_eur(kurs):
+def printer_eur(tabela, kurs):
+    print("\nNumer tabeli kursowej:", tabela)
+    print("Kurs:", kurs)
     print(f"""
           Wartość netto EUR: {str(round(netto_eur, 2)).replace(".", ",")} €
 
@@ -319,7 +325,7 @@ def printer_eur(kurs):
 
 # print the calculations in PLN
 def printer_pln(kurs, date):
-    print("Kurs sprzedaży opublikowany {} o godzinie 7:00 wynosi {}".format(date, kurs))
+    print("\nKurs sprzedaży Pekao SA opublikowany {} o godzinie 7:00 wynosi {}".format(date, kurs))
     print(f"""
         Wartość netto PLN: {str(round(netto_eur * kurs, 2)).replace(".", ",")} PLN
 
@@ -328,6 +334,6 @@ def printer_pln(kurs, date):
         Wartość brutto PLN: {str(round(netto_eur * kurs * brutto, 2)).replace(".", ",")} PLN
         """)
 
-file_check()
-
+file_check_nbp()
+file_check_pekao()
 netto(end)
