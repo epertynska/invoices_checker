@@ -92,7 +92,7 @@ def file_check_nbp():
         last = t.readlines()[-1].split()
         last_table = last[0].split("/")[0]
         date_last = last[1]
-        start_date = datetime.datetime.strptime(date_last, date_format) + delta
+        start_date = str(datetime.datetime.strptime(date_last, date_format) + delta).split()[0]
         if today_nbp != last_table:
             fill_gap(start_date, current_date)
 
