@@ -1,22 +1,35 @@
 import json
-import requests
 import datetime
+import requests
 from bs4 import BeautifulSoup
 
-currency_file = "tabele_kursowe.txt"
-DATE_FORMAT = "%Y-%m-%d"
-current_date = str(datetime.datetime.now()).split()[0]
-current_date_in_datetime = datetime.datetime.strptime(current_date, DATE_FORMAT)
+# writing all the NBP EUR currencies in the "tabele_kursowe.txt" file in given dates
+def fill_eur_gap(start, end, NBP_RATES_FILE):
+    print("Aktualizuję plik z tabelami NBP, proszę o chwilę cierpliwości.")
+    with open(NBP_RATES_FILE, "a") as f:
+        nbp_period = json.loads(requests.get("http://api.nbp.pl/api/exchangerates/rates/a/eur/{}/{}/".format(start, end)).text)
+        kursy = nbp_period['rates']
+        upper = len(kursy)
+        i = 0
+        while i < upper:
+            f.write(f"{kursy[i]['no']} {kursy[i]['effectiveDate']} {kursy[i]['mid']}\n")
+            i += 1
+    print("Plik z tabelami NBP został pomyślnie zaktualizowany.")
+    return
 
-# Pekao PLN rates
-def pekao_rates_file_create():  
-    start_date = datetime.datetime.strptime("2022-01-01", DATE_FORMAT)
-    end_date = current_date_in_datetime
+# fill the pekao file with missing exchange rates
+def fill_pln_gap(start, current_date, DATE_FORMAT, PEKAO_RATES_FILE):
+    current = datetime.datetime.strptime(current_date, DATE_FORMAT)
+  
+    start_date = datetime.datetime.strptime(start, DATE_FORMAT)
+    end_date = current
     delta = datetime.timedelta(days=1)
+    start_date += delta
+    print("Aktualizuję plik z kursami Pekao, proszę o chwilę cierpliwości.")
     while start_date <= end_date:
         day = str(start_date).split()[0]
         start_date += delta
-        with open("kursy_pekao.txt", "a") as p:
+        with open(PEKAO_RATES_FILE, "a") as p:
             url = f"https://www.pekao.com.pl/kursy-walut/lista-walut.html?nbpDate={day}&pekaoDate={day}&debitCardDate={day}&reutersDate=undefined&mortgageDate={day}&pekaoTable=1&customerSegment=CORPO#-kursy-walut-banku-pekao-sa"
             page = requests.get(url)
             if page.status_code != 200:
@@ -39,16 +52,5 @@ def pekao_rates_file_create():
                         kursy.append(d)
                     pekao = float(str(kursy[1].text).replace(",", "."))
                     p.write(day + " " + str(pekao) + "\n")
-
-# NBP tables file creation
-def nbp_rates_file_create():
-    with open(currency_file, "a") as f:
-        start = "2022-01-01"
-        end = current_date
-        nbp_period = json.loads(requests.get("http://api.nbp.pl/api/exchangerates/rates/a/eur/{}/{}/".format(start, end)).text)
-        kursy = nbp_period['rates']
-        upper = len(kursy)
-        i = 0
-        while i < upper:
-            f.write(f"{kursy[i]['no']} {kursy[i]['effectiveDate']} {kursy[i]['mid']}\n")
-            i += 1
+    print("Plik z kursami Pekao został pomyślnie zaktualizowany.")
+    return
