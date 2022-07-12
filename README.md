@@ -6,7 +6,7 @@ To be able to run this program, make sure to install:
 - `pip install requests`
 - `pip install lxml`
 
-You are welcome to use replit and see, how it works as well: [Invoices Checker]([https://replit.com/@EwaPertynska/invoices-bs4-json#main.py]).
+You are welcome to use replit and see, how it works as well: [Invoices Checker](https://replit.com/@EwaPertynska/invoices-bs4-json#main.py).
 
 This program matches the payment date with the correct NBP table and exchange rate, and also gets the Pekao SA sale exchange rate emitted at 7:00 on a given date.
 
